@@ -207,6 +207,13 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                 for (titles) |t| allocator.free(t);
                 allocator.free(titles);
             },
+            .pollActions => {
+                if (sendBoolResult(stdout_io, true, id_val)) |_| {
+                    std.log.debug("rpc sent pollActions response id={any}", .{id_val});
+                } else |e| {
+                    std.log.err("rpc sendBoolResult pollActions failed: {any}", .{e});
+                }
+            },
             .unsupported => sendErrorWithId(stdout_io, "method_not_found", id_val) catch {},
         }
 
@@ -222,7 +229,7 @@ const IconJson = struct {
     base64_data: ?[]const u8 = null,
 };
 
-const RpcMethod = enum { setIcon, addTextItem, addActionItem, removeItem, listItems, unsupported };
+const RpcMethod = enum { setIcon, addTextItem, addActionItem, removeItem, listItems, pollActions, unsupported };
 
 fn toIcon(allocator: std.mem.Allocator, icon_json: IconJson) !model.TrayIcon {
     if (std.mem.eql(u8, icon_json.type, "text")) {
@@ -245,6 +252,7 @@ fn toMethod(name: []const u8) RpcMethod {
     if (std.mem.eql(u8, name, "addAction")) return .addActionItem;
     if (std.mem.eql(u8, name, "removeItem")) return .removeItem;
     if (std.mem.eql(u8, name, "list")) return .listItems;
+    if (std.mem.eql(u8, name, "pollActions")) return .pollActions;
     return .unsupported;
 }
 

@@ -69,6 +69,7 @@ export class TrayClient {
     this.stdin = this.proc.stdin as FileSink | undefined;
 
     void this.readLoop();
+    void this.pollLoop();
   }
 
   async call<T = unknown>(
@@ -220,6 +221,21 @@ export class TrayClient {
 
     if (this.debug && this.inflight.size > 0) {
       console.debug("TrayKit: inflight after stream end", [...this.inflight]);
+    }
+  }
+
+  private async pollLoop() {
+    while (true) {
+      // Simple heartbeat so the native RPC loop can flush queued action events.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      try {
+        await this.call("pollActions");
+      } catch (err) {
+        if (this.debug) {
+          console.error("TrayKit pollActions error", err);
+        }
+        break;
+      }
     }
   }
 }
