@@ -1,6 +1,116 @@
 const std = @import("std");
-const objc_rt = @import("objc_runtime.zig");
 const model = @import("tray_model.zig");
+const objc_rt = @import("objc_runtime.zig");
+const runtime_mod = @import("tray_runtime.zig");
+const rpc = @import("rpc.zig");
+
+fn dupZ(allocator: std.mem.Allocator, slice: []const u8) ![:0]u8 {
+    var buf = try allocator.alloc(u8, slice.len + 1);
+    std.mem.copyForwards(u8, buf[0..slice.len], slice);
+    buf[slice.len] = 0;
+    return buf[0..slice.len :0];
+}
+
+const IconJson = struct {
+    type: []const u8,
+    title: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    accessibility_description: ?[]const u8 = null,
+    base64_data: ?[]const u8 = null,
+};
+
+const MenuItemJson = struct {
+    type: []const u8,
+    title: ?[]const u8 = null,
+    is_separator: bool = false,
+    key_equivalent: ?[]const u8 = null,
+    kind: ?[]const u8 = null,
+};
+
+const ConfigJson = struct {
+    icon: IconJson,
+    items: []const MenuItemJson,
+};
+
+fn toIcon(allocator: std.mem.Allocator, icon_json: IconJson) !model.TrayIcon {
+    const icon_type = icon_json.type;
+    if (std.mem.eql(u8, icon_type, "text")) {
+        const title = icon_json.title orelse "TrayKit";
+        return .{ .text = .{ .title = try dupZ(allocator, title) } };
+    } else if (std.mem.eql(u8, icon_type, "sf_symbol")) {
+        const name = icon_json.name orelse "checkmark.circle";
+        const acc = icon_json.accessibility_description orelse "TrayKit status icon";
+        return .{ .sf_symbol = .{ .name = try dupZ(allocator, name), .accessibility_description = try dupZ(allocator, acc) } };
+    } else if (std.mem.eql(u8, icon_type, "base64_image")) {
+        const data = icon_json.base64_data orelse "";
+        return .{ .base64_image = .{ .base64_data = try dupZ(allocator, data) } };
+    }
+    return error.InvalidIcon;
+}
+
+fn toMenuItem(allocator: std.mem.Allocator, item_json: MenuItemJson) !model.MenuItem {
+    if (std.mem.eql(u8, item_json.type, "text")) {
+        const title = item_json.title orelse "";
+        return .{ .text = .{ .title = try dupZ(allocator, title), .is_separator = item_json.is_separator } };
+    } else if (std.mem.eql(u8, item_json.type, "action")) {
+        const title = item_json.title orelse "Action";
+        const key_eq = item_json.key_equivalent orelse "";
+        const kind_str = item_json.kind orelse "quit";
+        _ = kind_str; // only quit supported today
+        return .{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = .quit } };
+    }
+    return error.InvalidItem;
+}
+
+fn defaultConfig(allocator: std.mem.Allocator) !model.TrayConfig {
+    var items = try allocator.alloc(model.MenuItem, 3);
+    items[0] = .{ .text = .{ .title = try dupZ(allocator, "TrayKit"), .is_separator = false } };
+    items[1] = .{ .text = .{ .title = try dupZ(allocator, ""), .is_separator = true } };
+    items[2] = .{ .action = .{ .title = try dupZ(allocator, "Quit"), .key_equivalent = try dupZ(allocator, "q"), .kind = .quit } };
+
+    return .{
+        .icon = .{ .sf_symbol = .{ .name = try dupZ(allocator, "checkmark.circle"), .accessibility_description = try dupZ(allocator, "TrayKit status icon") } },
+        .items = items,
+    };
+}
+
+fn parseConfigFromArgs(allocator: std.mem.Allocator) !model.TrayConfig {
+    var args = std.process.argsWithAllocator(allocator) catch return defaultConfig(allocator);
+    defer args.deinit();
+
+    var config_json_str: ?[]const u8 = null;
+    _ = args.next(); // skip binary name
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--config-json")) {
+            if (args.next()) |val| {
+                config_json_str = try allocator.dupe(u8, val);
+            }
+        }
+    }
+
+    if (config_json_str) |cfg_str| {
+        var parsed = std.json.parseFromSlice(ConfigJson, allocator, cfg_str, .{ .ignore_unknown_fields = true }) catch {
+            return defaultConfig(allocator);
+        };
+        defer parsed.deinit();
+
+        const len = parsed.value.items.len;
+        var items = try allocator.alloc(model.MenuItem, len);
+        var count: usize = 0;
+        for (parsed.value.items) |item_json| {
+            const menu_item = toMenuItem(allocator, item_json) catch continue;
+            items[count] = menu_item;
+            count += 1;
+        }
+
+        return .{
+            .icon = try toIcon(allocator, parsed.value.icon),
+            .items = items[0..count],
+        };
+    }
+
+    return defaultConfig(allocator);
+}
 
 pub const TrayApp = struct {
     config: model.TrayConfig,
@@ -24,139 +134,15 @@ pub const TrayApp = struct {
         );
 
         const nsStringClass = objc_rt.getClass("NSString");
-
         const button = objc_rt.msgSend_id0(statusItem, objc_rt.getSel("button"));
 
-        switch (self.config.icon) {
-            .text => |cfg| {
-                const titleStr = objc_rt.makeStrFn(
-                    nsStringClass,
-                    objc_rt.getSel("stringWithUTF8String:"),
-                    cfg.title,
-                );
-                objc_rt.msgSend_void_id(button, objc_rt.getSel("setTitle:"), titleStr);
-                objc_rt.msgSend_void_id(button, objc_rt.getSel("setImage:"), null);
-            },
-            .sf_symbol => |cfg| {
-                const symbolNameStr = objc_rt.makeStrFn(
-                    nsStringClass,
-                    objc_rt.getSel("stringWithUTF8String:"),
-                    cfg.name,
-                );
-                const accDescStr = objc_rt.makeStrFn(
-                    nsStringClass,
-                    objc_rt.getSel("stringWithUTF8String:"),
-                    cfg.accessibility_description,
-                );
-                const nsImageClass = objc_rt.getClass("NSImage");
-                const image = objc_rt.msgSend_id_id_id(
-                    nsImageClass,
-                    objc_rt.getSel("imageWithSystemSymbolName:accessibilityDescription:"),
-                    symbolNameStr,
-                    accDescStr,
-                );
-                objc_rt.msgSend_void_id(button, objc_rt.getSel("setImage:"), image);
-            },
-            .base64_image => |cfg| {
-                const nsDataClass = objc_rt.getClass("NSData");
-                const base64Str = objc_rt.makeStrFn(
-                    nsStringClass,
-                    objc_rt.getSel("stringWithUTF8String:"),
-                    cfg.base64_data,
-                );
-                const dataAlloc = objc_rt.msgSend_id0(nsDataClass, objc_rt.getSel("alloc"));
-                const data = objc_rt.msgSend_id_id(
-                    dataAlloc,
-                    objc_rt.getSel("initWithBase64Encoding:"),
-                    base64Str,
-                );
+        var runtime = runtime_mod.TrayRuntime.init(app, statusItem, button, nsStringClass);
+        runtime.setIcon(self.config.icon);
+        runtime.initMenu("TrayKit");
+        for (self.config.items) |item_cfg| runtime.addMenuItem(item_cfg, null);
 
-                const nsImageClass = objc_rt.getClass("NSImage");
-                const imageAlloc = objc_rt.msgSend_id0(nsImageClass, objc_rt.getSel("alloc"));
-                const image = objc_rt.msgSend_id_id(imageAlloc, objc_rt.getSel("initWithData:"), data);
-                objc_rt.msgSend_void_id(button, objc_rt.getSel("setImage:"), image);
-            },
-        }
-
-        const menuTitleStr = objc_rt.makeStrFn(
-            nsStringClass,
-            objc_rt.getSel("stringWithUTF8String:"),
-            "TrayKit",
-        );
-
-        const menuClass = objc_rt.getClass("NSMenu");
-        const menuAlloc = objc_rt.msgSend_id0(menuClass, objc_rt.getSel("alloc"));
-        const menu = objc_rt.msgSend_id_id(menuAlloc, objc_rt.getSel("initWithTitle:"), menuTitleStr);
-
-        const menuItemClass = objc_rt.getClass("NSMenuItem");
-
-        for (self.config.items) |item_cfg| {
-            switch (item_cfg) {
-                .action => |action_cfg| {
-                    const titleStr = objc_rt.makeStrFn(
-                        nsStringClass,
-                        objc_rt.getSel("stringWithUTF8String:"),
-                        action_cfg.title,
-                    );
-                    const keyEqStr = objc_rt.makeStrFn(
-                        nsStringClass,
-                        objc_rt.getSel("stringWithUTF8String:"),
-                        action_cfg.key_equivalent,
-                    );
-
-                    const itemAlloc = objc_rt.msgSend_id0(menuItemClass, objc_rt.getSel("alloc"));
-
-                    var menuItem: objc_rt.id = undefined;
-
-                    switch (action_cfg.kind) {
-                        .quit => {
-                            menuItem = objc_rt.menuItemInitFn(
-                                itemAlloc,
-                                objc_rt.getSel("initWithTitle:action:keyEquivalent:"),
-                                titleStr,
-                                objc_rt.getSel("terminate:"),
-                                keyEqStr,
-                            );
-                            objc_rt.msgSend_void_id(menuItem, objc_rt.getSel("setTarget:"), app);
-                        },
-                    }
-
-                    objc_rt.msgSend_void_id(menu, objc_rt.getSel("addItem:"), menuItem);
-                },
-                .text => |text_cfg| {
-                    if (text_cfg.is_separator) {
-                        const sepItem = objc_rt.msgSend_id0(
-                            menuItemClass,
-                            objc_rt.getSel("separatorItem"),
-                        );
-                        objc_rt.msgSend_void_id(menu, objc_rt.getSel("addItem:"), sepItem);
-                    } else {
-                        const titleStr = objc_rt.makeStrFn(
-                            nsStringClass,
-                            objc_rt.getSel("stringWithUTF8String:"),
-                            text_cfg.title,
-                        );
-                        const emptyEqStr = objc_rt.makeStrFn(
-                            nsStringClass,
-                            objc_rt.getSel("stringWithUTF8String:"),
-                            "",
-                        );
-
-                        const itemAlloc = objc_rt.msgSend_id0(menuItemClass, objc_rt.getSel("alloc"));
-                        const menuItem = objc_rt.menuItemInitFn(
-                            itemAlloc,
-                            objc_rt.getSel("initWithTitle:action:keyEquivalent:"),
-                            titleStr,
-                            null,
-                            emptyEqStr,
-                        );
-                        objc_rt.msgSend_void_id(menu, objc_rt.getSel("addItem:"), menuItem);
-                    }
-                },
-            }
-        }
-
-        objc_rt.msgSend_void_id(statusItem, objc_rt.getSel("setMenu:"), menu);
+        const rpc_thread = try std.Thread.spawn(.{}, rpc.rpcLoop, .{&runtime});
+        rpc_thread.detach();
 
         objc_rt.msgSend_void0(app, objc_rt.getSel("run"));
         objc_rt.msgSend_void0(pool, objc_rt.getSel("drain"));
@@ -164,27 +150,11 @@ pub const TrayApp = struct {
 };
 
 pub fn runTray() !void {
-    var items = [_]model.MenuItem{
-        .{ .text = .{ .title = "TrayKit", .is_separator = false } },
-        .{ .text = .{ .title = "", .is_separator = true } },
-        .{ .action = .{
-            .title = "Quit",
-            .key_equivalent = "q",
-            .kind = .quit,
-        } },
-    };
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    const app = TrayApp{
-        .config = .{
-            .icon = .{
-            .sf_symbol = .{
-                .name = "checkmark.circle",
-                .accessibility_description = "TrayKit status icon",
-            },
-        },
-            .items = &items,
-        },
-    };
-
+    const cfg = try parseConfigFromArgs(allocator);
+    const app = TrayApp{ .config = cfg };
     try app.run();
 }
