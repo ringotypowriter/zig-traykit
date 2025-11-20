@@ -1,34 +1,107 @@
-## 使用方式（通过 npm 包）
+## TrayKit Bun Bindings (Bun only)
 
-安装依赖（在你的 Bun 项目中）：
+> This package is **Bun-only**. It targets the [Bun](https://bun.com) runtime and is not designed to run on plain Node.js.
+
+These bindings expose a small TypeScript client that controls the TrayKit native macOS menu bar app from a Bun process (add/remove menu items, handle clicks, etc.).  
+Published npm package name: **`traykit-bindings`**.
+
+---
+
+## Installation (Bun project)
+
+In your Bun project:
 
 ```bash
 bun add traykit-bindings
 ```
 
-在代码里直接引入 `TrayKit` 包（需要类型可以额外导入 `TrayClientOptions`）：
+Requirements:
+- macOS (menu bar / status item)
+- Bun runtime (uses `bun spawn`, `bun:test`, etc.)
+
+---
+
+## Quick start
+
+Create a script in your Bun + TypeScript project, for example `tray.ts`:
 
 ```ts
 import TrayKit from "traykit-bindings";
 
 const client = TrayKit.createClient({
+  // Optional: default config JSON; if omitted, a built-in default is used.
   configJson: TrayKit.defaultConfigJson(),
+  // Optional: binaryPath, debug, etc.
 });
 
 await client.addText({ title: "Hello from TrayKit" });
 await client.addAction({ title: "Quit", key_equivalent: "q" });
 ```
 
-`TrayKit.defaultConfigJson()` 仅提供一个带 icon 的空菜单结构；如果想要默认多条项目，可以自己生成配置 JSON 再传入 `createClient`。
+Run with Bun:
 
-`addAction` 中的 `index` 参数是可选的（默认会追加到当前末尾），通常不需要显式传入。
+```bash
+bun tray.ts
+```
 
-如果需要细粒度控制，可以直接使用 `TrayKit.Client` 构造函数，并传入 `TrayClientOptions`。
+By default the client starts the bundled native binary from the package’s `bin/zig-traykit`.  
+If you have your own custom build, override `binaryPath`:
 
+```ts
+const client = TrayKit.createClient({
+  binaryPath: "/your/custom/path/zig-traykit",
+});
+```
 
-## 仓库内本地示例
+---
 
-在本仓库 `ts-bindings/` 目录下也有一个示例脚本，方便本地开发调试：
+## API overview
+
+The client is fully typed for Bun + TypeScript. Core entry points:
+
+- `TrayKit.createClient(opts?: TrayClientOptions): TrayClient`
+- `TrayKit.defaultConfigJson(): string`
+- `TrayKit.Client` constructor (lower-level usage)
+
+### `TrayClientOptions`
+
+```ts
+type TrayClientOptions = {
+  binaryPath?: string;  // Custom path to the Zig binary
+  configJson?: string;  // Initial configuration JSON
+  debug?: boolean;      // Enable debug logging
+};
+```
+
+### Main instance methods
+
+- `addText({ title, is_separator?, index? })`
+- `addAction({ title, key_equivalent?, index?, onClick? })`
+- `removeItem(index)`
+- `list()`
+- `setIcon(params)`
+Example:
+
+```ts
+await client.addText({ title: "Title", is_separator: false });
+
+await client.addAction({
+  title: "Click me",
+  key_equivalent: "c",
+  onClick: () => {
+    console.log("tray item clicked");
+  },
+});
+```
+
+`TrayKit.defaultConfigJson()` returns a minimal config with an icon and no menu items.  
+If you want a richer default menu, build your own JSON config and pass it into `createClient`.
+
+---
+
+## Local development in this repo
+
+If you are working inside the TrayKit repo on the bindings, you can use the built-in demo:
 
 ```bash
 cd ts-bindings
@@ -36,4 +109,8 @@ bun install
 bun run demo.ts
 ```
 
-This project was created using `bun init` in bun v1.2.23. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Before publishing to npm, the `prepublishOnly` script will automatically:
+
+1. Build the macOS native binary with Zig (using `ReleaseSmall` optimize mode).
+2. Copy the binary into `ts-bindings/bin/zig-traykit`.
+3. Run `bun test` to perform basic integration checks and ensure the binary can be found and started.
