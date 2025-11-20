@@ -15,10 +15,60 @@ async function main() {
 
   await client.addAction({ title: "Quit", key_equivalent: "q" });
 
-  const items = await client.list();
-  console.log("Tray items:", items);
+  console.log("TrayKit demo ready.");
+  console.log("Commands: 'h' hide, 's' show, 'l' list, 'q' quit");
+
+  process.stdin.setEncoding("utf8");
+  process.stdin.resume();
+
+  async function cleanup() {
+    process.stdin.pause();
+    try {
+      await client.hide();
+    } catch (err) {
+      console.error("Failed to stop TrayKit", err);
+    }
+  }
+
+  async function handleCommand(raw: string) {
+    const cmd = raw.trim().toLowerCase();
+    switch (cmd) {
+      case "h":
+        await client.hide();
+        console.log("TrayKit hidden (process killed).");
+        break;
+      case "s":
+        await client.show();
+        console.log("TrayKit shown (process restarted).");
+        break;
+      case "l": {
+        try {
+          const items = await client.list();
+          console.log("Current tray items:", items);
+        } catch (err) {
+          console.error("list() failed (maybe hidden?)", err);
+        }
+        break;
+      }
+      case "q":
+        await cleanup();
+        console.log("Bye!");
+        process.exit(0);
+        break;
+      default:
+        if (cmd) {
+          console.log("Unknown command:", cmd);
+        }
+    }
+  }
+
+  process.stdin.on("data", (chunk: string | Buffer) => {
+    const input = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    void handleCommand(input);
+  });
 }
 
 void main().catch((err) => {
   console.error("Tray demo failed", err);
+  process.exitCode = 1;
 });
