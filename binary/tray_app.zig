@@ -56,8 +56,9 @@ fn toMenuItem(allocator: std.mem.Allocator, item_json: MenuItemJson) !model.Menu
         const title = item_json.title orelse "Action";
         const key_eq = item_json.key_equivalent orelse "";
         const kind_str = item_json.kind orelse "quit";
-        _ = kind_str; // only quit supported today
-        return .{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = .quit } };
+        const is_callback = std.mem.eql(u8, kind_str, "callback");
+        const kind: model.ActionKind = if (is_callback) .{ .callback = 0 } else .quit;
+        return .{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = kind } };
     }
     return error.InvalidItem;
 }

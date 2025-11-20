@@ -15,6 +15,10 @@ type JsonRpcResponse = {
   error?: { code: number; message: string };
 };
 
+type MenuSlot =
+  | { kind: "text" }
+  | { kind: "action"; onClick?: () => void };
+
 export type TrayClientOptions = {
   binaryPath?: string;
   configJson?: string;
@@ -43,6 +47,7 @@ export class TrayClient {
     number,
     (res: JsonRpcResponse) => void
   >();
+  private readonly slots: MenuSlot[] = [];
   private unknownIdCount = 0;
   private readonly debug: boolean;
   private readonly inflight = new Set<number>();
@@ -101,19 +106,39 @@ export class TrayClient {
   }
 
   addText(params: { title: string; is_separator?: boolean; index?: number }) {
-    return this.call("addText", params);
+    const idx = params.index ?? this.slots.length;
+    const promise = this.call("addText", params);
+    if (idx >= 0 && idx <= this.slots.length) {
+      this.slots.splice(idx, 0, { kind: "text" });
+    }
+    return promise;
   }
 
   addAction(params: {
     title: string;
     key_equivalent?: string;
     index?: number;
+    onClick?: () => void;
   }) {
-    return this.call("addAction", params);
+    const { onClick, ...rest } = params;
+    const idx = rest.index ?? this.slots.length;
+    const payload = {
+      ...rest,
+      kind: onClick ? "callback" : "quit",
+    } as Record<string, unknown>;
+    const promise = this.call("addAction", payload);
+    if (idx >= 0 && idx <= this.slots.length) {
+      this.slots.splice(idx, 0, { kind: "action", onClick });
+    }
+    return promise;
   }
 
   removeItem(index: number) {
-    return this.call("removeItem", { index });
+    const promise = this.call("removeItem", { index });
+    if (index >= 0 && index < this.slots.length) {
+      this.slots.splice(index, 1);
+    }
+    return promise;
   }
 
   list() {
@@ -146,8 +171,25 @@ export class TrayClient {
         if (this.debug) console.debug("TrayKit <-", line);
 
         try {
-          const res = JSON.parse(line) as JsonRpcResponse;
+          const res = JSON.parse(line) as JsonRpcResponse & {
+            method?: string;
+            params?: Record<string, unknown>;
+          };
           if (res.id == null) {
+            if (res.method === "tray_action") {
+              const idx = Number(res.params?.index);
+              if (Number.isInteger(idx) && idx >= 0 && idx < this.slots.length) {
+                const slot = this.slots[idx];
+                if (slot?.kind === "action" && slot.onClick) {
+                  try {
+                    slot.onClick();
+                  } catch (err) {
+                    console.error("TrayKit onClick error", err);
+                  }
+                }
+              }
+              continue;
+            }
             // Notifications or malformed replies; avoid log spam.
             if (this.unknownIdCount < 5 || this.unknownIdCount % 20 === 0) {
               console.warn("TrayKit: response with null id", res);

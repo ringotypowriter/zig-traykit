@@ -6,6 +6,48 @@ const c = @cImport({
     @cInclude("pthread.h");
 });
 
+pub const ActionEvent = struct {
+    index: usize,
+};
+
+pub const max_action_events: usize = 64;
+
+pub const ActionQueue = struct {
+    mutex: std.Thread.Mutex = .{},
+    buf: [max_action_events]ActionEvent = undefined,
+    head: usize = 0,
+    tail: usize = 0,
+
+    pub fn append(self: *ActionQueue, ev: ActionEvent) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        const next_tail = (self.tail + 1) % max_action_events;
+        if (next_tail == self.head) {
+            // queue full, drop event
+            return;
+        }
+        self.buf[self.tail] = ev;
+        self.tail = next_tail;
+    }
+
+    pub fn pop(self: *ActionQueue) ?ActionEvent {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.head == self.tail) return null;
+        const ev = self.buf[self.head];
+        self.head = (self.head + 1) % max_action_events;
+        return ev;
+    }
+};
+
+// Global action queue shared between UI callbacks and rpc loop.
+var g_action_queue_storage: ActionQueue = .{};
+pub var g_action_queue: *ActionQueue = &g_action_queue_storage;
+
+pub fn popActionEvent() ?ActionEvent {
+    return g_action_queue.pop();
+}
+
 pub const TrayRuntime = struct {
     nsStringClass: objc_rt.id,
     menuItemClass: objc_rt.id,
@@ -14,6 +56,8 @@ pub const TrayRuntime = struct {
     button: objc_rt.id,
     statusItem: objc_rt.id,
     item_count: usize,
+    targetClass: objc_rt.Class,
+    target: objc_rt.id,
 
     pub fn init(app: objc_rt.id, statusItem: objc_rt.id, button: objc_rt.id, nsStringClass: objc_rt.id) TrayRuntime {
         return .{
@@ -24,6 +68,8 @@ pub const TrayRuntime = struct {
             .button = button,
             .statusItem = statusItem,
             .item_count = 0,
+            .targetClass = null,
+            .target = null,
         };
     }
 
@@ -41,6 +87,29 @@ pub const TrayRuntime = struct {
     pub fn setIcon(self: *TrayRuntime, icon: model.TrayIcon) void {
         var payload = SetIconPayload{ .runtime = self, .icon = icon };
         onMain(&payload, SetIconPayload.run);
+    }
+
+    fn ensureTarget(self: *TrayRuntime) void {
+        if (self.targetClass != null and self.target != null) return;
+
+        // Define a small Objective-C class that holds the click handler.
+        if (self.targetClass == null) {
+            const superclass = objc_rt.getClass("NSObject");
+            const fn_ptr = @constCast(&traykitMenuClicked);
+            const cls = objc_rt.allocClassPair(superclass, "TrayKitMenuTarget", 0);
+            if (cls != null) {
+                const sel = objc_rt.getSel("traykitMenuClicked:");
+                const imp: objc_rt.IMP = @ptrCast(fn_ptr);
+                _ = objc_rt.addMethod(cls, sel, imp, "v@:@");
+                objc_rt.registerClassPair(cls);
+                self.targetClass = cls;
+            }
+        }
+
+        if (self.target == null and self.targetClass != null) {
+            const allocObj = objc_rt.msgSend_id0(self.targetClass, objc_rt.getSel("alloc"));
+            self.target = objc_rt.msgSend_id0(allocObj, objc_rt.getSel("init"));
+        }
     }
 
     fn setIconSync(self: *TrayRuntime, icon: model.TrayIcon) void {
@@ -186,6 +255,19 @@ pub const TrayRuntime = struct {
                             );
                             objc_rt.msgSend_void_id(menuItem, objc_rt.getSel("setTarget:"), self.runtime.app);
                         },
+                        .callback => |_| {
+                            self.runtime.ensureTarget();
+                            menuItem = objc_rt.menuItemInitFn(
+                                itemAlloc,
+                                objc_rt.getSel("initWithTitle:action:keyEquivalent:"),
+                                titleStr,
+                                objc_rt.getSel("traykitMenuClicked:"),
+                                keyEqStr,
+                            );
+                            if (self.runtime.target) |t| {
+                                objc_rt.msgSend_void_id(menuItem, objc_rt.getSel("setTarget:"), t);
+                            }
+                        },
                     }
 
                     if (insert_index == self.runtime.item_count) {
@@ -274,7 +356,7 @@ pub const TrayRuntime = struct {
         }
     };
 
-    const ListPayload = struct {
+const ListPayload = struct {
         runtime: *TrayRuntime,
         allocator: std.mem.Allocator,
         titles: [][]u8,
@@ -311,3 +393,12 @@ pub const TrayRuntime = struct {
         }
     };
 };
+
+fn traykitMenuClicked(self: objc_rt.id, _: objc_rt.SEL, sender: objc_rt.id) callconv(.c) void {
+    _ = self;
+    const menu = objc_rt.msgSend_id0(sender, objc_rt.getSel("menu"));
+    if (menu == null) return;
+    const idx_i64 = objc_rt.msgSend_i64_id(menu, objc_rt.getSel("indexOfItem:"), sender);
+    if (idx_i64 < 0) return;
+    g_action_queue.append(.{ .index = @as(usize, @intCast(idx_i64)) });
+}

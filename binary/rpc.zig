@@ -117,6 +117,9 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                     const title_val: std.json.Value = p.object.get("title") orelse std.json.Value{ .string = "Action" };
                     const key_val: std.json.Value = p.object.get("key_equivalent") orelse std.json.Value{ .string = "" };
                     const idx_opt = p.object.get("index");
+                    const kind_val = p.object.get("kind");
+                    const cb_id_val = p.object.get("id");
+
                     const title = switch (title_val) {
                         .string => |s| s,
                         else => "Action",
@@ -125,7 +128,19 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                         .string => |s| s,
                         else => "",
                     };
-                    const menu_item = model.MenuItem{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = .quit } };
+
+                    const is_callback = if (kind_val) |kv| switch (kv) {
+                        .string => |s| std.mem.eql(u8, s, "callback"),
+                        else => false,
+                    } else false;
+                    const cb_id: u32 = if (cb_id_val) |v| switch (v) {
+                        .integer => |i| @as(u32, @intCast(i)),
+                        else => 0,
+                    } else 0;
+
+                    const action_kind: model.ActionKind = if (is_callback) .{ .callback = cb_id } else .quit;
+
+                    const menu_item = model.MenuItem{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = action_kind } };
                     const idx_converted: ?usize = if (idx_opt) |v| blk: {
                         const vi = switch (v) {
                             .integer => |i| i,
@@ -194,6 +209,8 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
             },
             .unsupported => sendErrorWithId(stdout_io, "method_not_found", id_val) catch {},
         }
+
+        flushActionNotifications(stdout_io);
     }
 }
 
@@ -257,6 +274,23 @@ fn sendBoolResult(writer: anytype, ok: bool, id: std.json.Value) !void {
     try writer.writeAll(",\"result\":");
     try writer.writeAll(if (ok) "true" else "false");
     try writer.writeAll("}\n");
+}
+
+fn sendActionNotification(writer: anytype, index: usize) !void {
+    try writer.writeAll("{\"jsonrpc\":\"2.0\",\"method\":\"tray_action\",\"params\":{\"index\":");
+    var buf: [32]u8 = undefined;
+    const slice = try std.fmt.bufPrint(&buf, "{d}", .{index});
+    try writer.writeAll(slice);
+    try writer.writeAll("}}\n");
+}
+
+fn flushActionNotifications(writer: anytype) void {
+    while (runtime_mod.popActionEvent()) |ev| {
+        sendActionNotification(writer, ev.index) catch |e| {
+            std.log.err("rpc sendActionNotification failed: {any}", .{e});
+            return;
+        };
+    }
 }
 
 fn sendStringArrayResult(writer: anytype, items: [][]u8, id: std.json.Value) !void {

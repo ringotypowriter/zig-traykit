@@ -2,8 +2,16 @@ import TrayKit from "./index";
 
 async function main() {
   const client = TrayKit.createClient();
-  await client.addText({ title: "Exusiai says hi" });
-  await client.addText({ title: "Exusiai says hi #2" });
+  await client.addText({ title: "Text #1" });
+  await client.addText({ title: "Text #2" });
+
+  await client.addAction({
+    title: "Say Hi",
+    key_equivalent: "h",
+    onClick: () => {
+      console.log("[TrayKit] action clicked -> Hi there!");
+    },
+  });
 
   await client.addAction({ title: "Quit", key_equivalent: "q" });
 

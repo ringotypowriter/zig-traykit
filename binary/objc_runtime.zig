@@ -5,8 +5,8 @@ const objc = @cImport({
     @cInclude("objc/message.h");
 });
 pub const id = ?*anyopaque;
-pub const SEL = ?*anyopaque;
-pub const Class = ?*anyopaque;
+pub const SEL = ?*objc.struct_objc_selector;
+pub const Class = ?*objc.struct_objc_class;
 
 pub fn getClass(name: [*:0]const u8) Class {
     return objc.objc_getClass(name);
@@ -27,6 +27,7 @@ const MsgSendVoidI64 = *const fn (id, SEL, i64) callconv(.c) void;
 const MsgSendVoidIdI64 = *const fn (id, SEL, id, i64) callconv(.c) void;
 const MakeStrFn = *const fn (id, SEL, [*:0]const u8) callconv(.c) id;
 const MenuItemInitFn = *const fn (id, SEL, id, SEL, id) callconv(.c) id;
+const MsgSendI64Id = *const fn (id, SEL, id) callconv(.c) i64;
 
 pub const msgSend_id0: MsgSendId0 = @ptrCast(&objc.objc_msgSend);
 pub const msgSend_id_id: MsgSendIdId = @ptrCast(&objc.objc_msgSend);
@@ -39,5 +40,11 @@ pub const msgSend_void_i64: MsgSendVoidI64 = @ptrCast(&objc.objc_msgSend);
 pub const msgSend_void_id_i64: MsgSendVoidIdI64 = @ptrCast(&objc.objc_msgSend);
 pub const makeStrFn: MakeStrFn = @ptrCast(&objc.objc_msgSend);
 pub const menuItemInitFn: MenuItemInitFn = @ptrCast(&objc.objc_msgSend);
+pub const msgSend_i64_id: MsgSendI64Id = @ptrCast(&objc.objc_msgSend);
+
+pub const allocClassPair = objc.objc_allocateClassPair;
+pub const registerClassPair = objc.objc_registerClassPair;
+pub const addMethod = objc.class_addMethod;
+pub const IMP = objc.IMP;
 
 pub const NSVariableStatusItemLength: f64 = -1.0;

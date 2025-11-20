@@ -17,8 +17,9 @@ pub const Base64Icon = struct {
     base64_data: [*:0]const u8,
 };
 
-pub const ActionKind = enum {
+pub const ActionKind = union(enum) {
     quit,
+    callback: u32,
 };
 
 pub const ActionItem = struct {
@@ -41,4 +42,3 @@ pub const TrayConfig = struct {
     icon: TrayIcon,
     items: []const MenuItem,
 };
-
