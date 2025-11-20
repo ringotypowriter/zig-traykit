@@ -1,6 +1,6 @@
 {
   "name": "traykit-bindings",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Zig-powered macOS tray (menu bar) bindings for Bun (Bun-only).",
   "module": "index.ts",
   "type": "module",
@@ -11,6 +11,8 @@
   },
   "files": [
     "index.ts",
+    "rpc.ts",
+    "model.ts",
     "README.md",
     "bin/"
   ],
