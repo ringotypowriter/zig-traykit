@@ -3,6 +3,7 @@ const model = @import("tray_model.zig");
 const objc_rt = @import("objc_runtime.zig");
 const runtime_mod = @import("tray_runtime.zig");
 const rpc = @import("rpc.zig");
+const log = @import("log.zig");
 
 fn dupZ(allocator: std.mem.Allocator, slice: []const u8) ![:0]u8 {
     var buf = try allocator.alloc(u8, slice.len + 1);
@@ -117,7 +118,7 @@ pub const TrayApp = struct {
     config: model.TrayConfig,
 
     pub fn run(self: *const TrayApp) !void {
-        std.debug.print("TrayKit starting\n", .{});
+        log.debug("TrayKit starting\n", .{});
 
         const poolClass = objc_rt.getClass("NSAutoreleasePool");
         const poolAlloc = objc_rt.msgSend_id0(poolClass, objc_rt.getSel("alloc"));

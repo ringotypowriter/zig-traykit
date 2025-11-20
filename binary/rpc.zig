@@ -1,6 +1,7 @@
 const std = @import("std");
 const model = @import("tray_model.zig");
 const runtime_mod = @import("tray_runtime.zig");
+const log = @import("log.zig");
 
 pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
     const allocator = std.heap.c_allocator;
@@ -29,8 +30,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
         if (trimmed.len == 0) continue;
 
         var parsed = std.json.parseFromSlice(std.json.Value, allocator, trimmed, .{}) catch {
-            // Log the offending line to stderr to debug client-side payload issues.
-            std.log.warn("rpc parse_error on line: {s}", .{trimmed});
+            log.debug("rpc parse_error on line: {s}", .{trimmed});
             sendError(stdout_io, "parse_error", null);
             continue;
         };
@@ -55,7 +55,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
             .integer => |i| i,
             else => -1,
         };
-        std.log.debug("rpc recv method={s} id={d}", .{ method_slice, id_debug });
+        log.debug("rpc recv method={s} id={d}", .{ method_slice, id_debug });
 
         const method_tag = toMethod(method_slice);
         const params = root.object.get("params");
@@ -75,11 +75,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                         },
                     };
                     const ok = runtime.removeMenuItem(@as(usize, @intCast(idx_int)));
-                    if (sendBoolResult(stdout_io, ok, id_val)) |_| {
-                        std.log.debug("rpc sent removeItem response id={any}", .{id_val});
-                    } else |e| {
-                        std.log.err("rpc sendBoolResult removeItem failed: {any}", .{e});
-                    }
+                    _ = sendBoolResult(stdout_io, ok, id_val) catch {};
                 } else sendErrorWithId(stdout_io, "missing_params", id_val) catch {};
             },
             .addTextItem => {
@@ -104,12 +100,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                         break :blk @as(usize, @intCast(vi));
                     } else null;
                     runtime.addMenuItem(menu_item, idx_converted);
-                    std.log.debug("rpc send addText ok id={any}", .{id_val});
-                    if (sendBoolResult(stdout_io, true, id_val)) |_| {
-                        std.log.debug("rpc sent addText response id={any}", .{id_val});
-                    } else |e| {
-                        std.log.err("rpc sendBoolResult addText failed: {any}", .{e});
-                    }
+                    _ = sendBoolResult(stdout_io, true, id_val) catch {};
                 } else sendErrorWithId(stdout_io, "missing_params", id_val) catch {};
             },
             .addActionItem => {
@@ -149,12 +140,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                         break :blk @as(usize, @intCast(vi));
                     } else null;
                     runtime.addMenuItem(menu_item, idx_converted);
-                    std.log.debug("rpc send addAction ok id={any}", .{id_val});
-                    if (sendBoolResult(stdout_io, true, id_val)) |_| {
-                        std.log.debug("rpc sent addAction response id={any}", .{id_val});
-                    } else |e| {
-                        std.log.err("rpc sendBoolResult addAction failed: {any}", .{e});
-                    }
+                    _ = sendBoolResult(stdout_io, true, id_val) catch {};
                 } else sendErrorWithId(stdout_io, "missing_params", id_val) catch {};
             },
             .setIcon => {
@@ -187,11 +173,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                         continue;
                     };
                     runtime.setIcon(icon);
-                    if (sendBoolResult(stdout_io, true, id_val)) |_| {
-                        std.log.debug("rpc sent setIcon response id={any}", .{id_val});
-                    } else |e| {
-                        std.log.err("rpc sendBoolResult setIcon failed: {any}", .{e});
-                    }
+                    _ = sendBoolResult(stdout_io, true, id_val) catch {};
                 } else sendErrorWithId(stdout_io, "missing_params", id_val) catch {};
             },
             .listItems => {
@@ -199,20 +181,12 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                     sendErrorWithId(stdout_io, "list_failed", id_val) catch {};
                     continue;
                 };
-                if (sendStringArrayResult(stdout_io, titles, id_val)) |_| {
-                    std.log.debug("rpc sent list response id={any}", .{id_val});
-                } else |e| {
-                    std.log.err("rpc sendStringArrayResult failed: {any}", .{e});
-                }
+                _ = sendStringArrayResult(stdout_io, titles, id_val) catch {};
                 for (titles) |t| allocator.free(t);
                 allocator.free(titles);
             },
             .pollActions => {
-                if (sendBoolResult(stdout_io, true, id_val)) |_| {
-                    std.log.debug("rpc sent pollActions response id={any}", .{id_val});
-                } else |e| {
-                    std.log.err("rpc sendBoolResult pollActions failed: {any}", .{e});
-                }
+                _ = sendBoolResult(stdout_io, true, id_val) catch {};
             },
             .unsupported => sendErrorWithId(stdout_io, "method_not_found", id_val) catch {},
         }
@@ -295,7 +269,7 @@ fn sendActionNotification(writer: anytype, index: usize) !void {
 fn flushActionNotifications(writer: anytype) void {
     while (runtime_mod.popActionEvent()) |ev| {
         sendActionNotification(writer, ev.index) catch |e| {
-            std.log.err("rpc sendActionNotification failed: {any}", .{e});
+            log.debug("rpc sendActionNotification failed: {any}", .{e});
             return;
         };
     }
