@@ -1,12 +1,23 @@
 {
   "name": "traykit-bindings",
+  "version": "0.1.0",
+  "description": "Zig-powered macOS tray (menu bar) bindings for Bun/TypeScript.",
   "module": "index.ts",
   "type": "module",
-  "private": true,
   "exports": {
     ".": {
       "import": "./index.ts"
     }
+  },
+  "files": [
+    "index.ts",
+    "README.md",
+    "bin/"
+  ],
+  "scripts": {
+    "build-binary": "cd ../binary && zig build && mkdir -p ../ts-bindings/bin && cp zig-out/bin/zig-traykit ../ts-bindings/bin/zig-traykit",
+    "test": "bun test",
+    "prepublishOnly": "npm run build-binary && npm test"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -1,23 +1,15 @@
-## bindings
+## 使用方式（通过 npm 包）
 
-To install dependencies:
-
-```bash
-bun install
-```
-
-## 使用方式
-
-安装依赖：
+安装依赖（在你的 Bun 项目中）：
 
 ```bash
-bun install
+bun add traykit-bindings
 ```
 
 在代码里直接引入 `TrayKit` 包（需要类型可以额外导入 `TrayClientOptions`）：
 
 ```ts
-import TrayKit from "./index";
+import TrayKit from "traykit-bindings";
 
 const client = TrayKit.createClient({
   configJson: TrayKit.defaultConfigJson(),
@@ -33,9 +25,14 @@ await client.addAction({ title: "Quit", key_equivalent: "q" });
 
 如果需要细粒度控制，可以直接使用 `TrayKit.Client` 构造函数，并传入 `TrayClientOptions`。
 
-## 运行示例
+
+## 仓库内本地示例
+
+在本仓库 `ts-bindings/` 目录下也有一个示例脚本，方便本地开发调试：
 
 ```bash
+cd ts-bindings
+bun install
 bun run demo.ts
 ```
 

@@ -55,8 +55,7 @@ export class TrayClient {
   constructor(private readonly options?: TrayClientOptions) {
     this.debug = Boolean(options?.debug ?? process.env.TRAYKIT_DEBUG);
     const binaryPath =
-      options?.binaryPath ??
-      `${import.meta.dir}/../binary/zig-out/bin/zig-traykit`;
+      options?.binaryPath ?? `${import.meta.dir}/bin/zig-traykit`;
     const args = ["--config-json", options?.configJson ?? defaultConfigJson()];
 
     this.proc = spawn({
