@@ -79,3 +79,27 @@ test("hide/show are idempotent", async () => {
 
   await client.hide();
 });
+
+test("clearItems removes all items and persists", async () => {
+  const client = TrayKit.createClient({
+    configJson: TrayKit.defaultConfigJson(),
+  });
+
+  await client.addText({ title: "Keep" });
+  await client.addAction({ title: "Click" });
+
+  const before = (await client.list()) as unknown[];
+  expect(before.length).toBeGreaterThan(0);
+
+  await client.clearItems();
+  const cleared = (await client.list()) as unknown[];
+  expect(cleared).toEqual([]);
+
+  await client.hide();
+  await client.show();
+
+  const after = (await client.list()) as unknown[];
+  expect(after).toEqual([]);
+
+  await client.hide();
+});

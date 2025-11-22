@@ -16,7 +16,7 @@ async function main() {
   await client.addAction({ title: "Quit", key_equivalent: "q" });
 
   console.log("TrayKit demo ready.");
-  console.log("Commands: 'h' hide, 's' show, 'l' list, 'q' quit");
+  console.log("Commands: 'h' hide, 's' show, 'l' list, 'c' clear, 'q' quit");
 
   process.stdin.setEncoding("utf8");
   process.stdin.resume();
@@ -50,6 +50,10 @@ async function main() {
         }
         break;
       }
+      case "c":
+        await client.clearItems();
+        console.log("Tray menu cleared.");
+        break;
       case "q":
         await cleanup();
         console.log("Bye!");

@@ -137,6 +137,10 @@ export function removeItemAt(state: TrayState, index: number): boolean {
   return true;
 }
 
+export function clearItems(state: TrayState): void {
+  state.items.length = 0;
+}
+
 function parseIcon(value: unknown): IconConfig | null {
   if (!value || typeof value !== "object") return null;
   const type = coerceIconType((value as Record<string, unknown>).type);

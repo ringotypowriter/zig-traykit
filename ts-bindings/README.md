@@ -78,6 +78,7 @@ type TrayClientOptions = {
 - `addText({ title, is_separator?, index? })`
 - `addAction({ title, key_equivalent?, index?, onClick? })`
 - `removeItem(index)`
+- `clearItems()`
 - `list()`
 - `setIcon(params)`
 Example:

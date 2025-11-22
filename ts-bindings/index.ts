@@ -5,6 +5,7 @@ import {
   removeItemAt,
   serializeState,
   stateFromConfigJson,
+  clearItems,
   updateIconState,
 } from "./model";
 import type { TrayClientOptions, TrayState } from "./model";
@@ -80,6 +81,12 @@ export class TrayClient {
       this.slots.splice(index, 1);
     }
     return this.rpc.call("removeItem", { index });
+  }
+
+  clearItems() {
+    clearItems(this.state);
+    this.slots.length = 0;
+    return this.rpc.call("clearItems");
   }
 
   list() {

@@ -181,6 +181,11 @@ pub const TrayRuntime = struct {
         return payload.ok;
     }
 
+    pub fn clearMenuItems(self: *TrayRuntime) void {
+        var payload = ClearPayload{ .runtime = self };
+        onMain(&payload, ClearPayload.run);
+    }
+
     pub fn listTitles(self: *TrayRuntime, allocator: std.mem.Allocator) ![][]u8 {
         var payload = ListPayload{ .runtime = self, .allocator = allocator, .titles = undefined, .err = null };
         onMain(&payload, ListPayload.run);
@@ -353,6 +358,17 @@ pub const TrayRuntime = struct {
             );
             self.runtime.item_count -= 1;
             self.ok = true;
+        }
+    };
+
+    const ClearPayload = struct {
+        runtime: *TrayRuntime,
+
+        fn run(ctx: ?*anyopaque) callconv(.c) void {
+            const self: *ClearPayload = @ptrCast(@alignCast(ctx));
+            if (self.runtime.menu == null) return;
+            objc_rt.msgSend_void0(self.runtime.menu, objc_rt.getSel("removeAllItems"));
+            self.runtime.item_count = 0;
         }
     };
 
