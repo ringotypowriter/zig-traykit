@@ -12,9 +12,7 @@ import type { TrayClientOptions, TrayState } from "./model";
 import { JsonRpcClient } from "./rpc";
 export type { TrayClientOptions } from "./model";
 
-type MenuSlot =
-  | { kind: "text" }
-  | { kind: "action"; onClick?: () => void };
+type MenuSlot = { kind: "text" } | { kind: "action"; onClick?: () => void };
 
 export function defaultConfigJson(): string {
   return modelDefaultConfigJson();
@@ -29,7 +27,8 @@ export class TrayClient {
 
   constructor(private readonly options?: TrayClientOptions) {
     this.debug = Boolean(options?.debug ?? process.env.TRAYKIT_DEBUG);
-    const binaryPath = options?.binaryPath ?? `${import.meta.dir}/bin/zig-traykit`;
+    const binaryPath =
+      options?.binaryPath ?? `${import.meta.dir}/bin/zig-traykit`;
     this.initialConfigJson = options?.configJson ?? defaultConfigJson();
     this.state = stateFromConfigJson(this.initialConfigJson);
     this.rebuildSlotsFromState();
@@ -55,6 +54,7 @@ export class TrayClient {
     title: string;
     is_separator?: boolean;
     index?: number;
+    sf_symbol_name?: string;
   }) {
     const index = insertTextItem(this.state, params);
     this.slots.splice(index, 0, { kind: "text" });
@@ -66,6 +66,7 @@ export class TrayClient {
     title: string;
     key_equivalent?: string;
     index?: number;
+    sf_symbol_name?: string;
     onClick?: () => void;
   }) {
     const { onClick, ...rest } = params;
@@ -77,7 +78,11 @@ export class TrayClient {
   }
 
   removeItem(index: number) {
-    if (removeItemAt(this.state, index) && index >= 0 && index < this.slots.length) {
+    if (
+      removeItemAt(this.state, index) &&
+      index >= 0 &&
+      index < this.slots.length
+    ) {
       this.slots.splice(index, 1);
     }
     return this.rpc.call("removeItem", { index });
@@ -90,7 +95,10 @@ export class TrayClient {
   }
 
   list() {
-    return this.rpc.call("list");
+    // Return a cloned snapshot of the local state so callers can inspect
+    // metadata (e.g. sf_symbol_name) that the current RPC `list` payload
+    // does not include.
+    return Promise.resolve(this.state.items.map((item) => ({ ...item })));
   }
 
   async hide(): Promise<void> {

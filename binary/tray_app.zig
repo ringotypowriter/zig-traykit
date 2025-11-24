@@ -26,6 +26,7 @@ const MenuItemJson = struct {
     is_separator: bool = false,
     key_equivalent: ?[]const u8 = null,
     kind: ?[]const u8 = null,
+    sf_symbol_name: ?[]const u8 = null,
 };
 
 const ConfigJson = struct {
@@ -50,16 +51,18 @@ fn toIcon(allocator: std.mem.Allocator, icon_json: IconJson) !model.TrayIcon {
 }
 
 fn toMenuItem(allocator: std.mem.Allocator, item_json: MenuItemJson) !model.MenuItem {
+    const sf_name = if (item_json.sf_symbol_name) |s| try dupZ(allocator, s) else undefined;
+
     if (std.mem.eql(u8, item_json.type, "text")) {
         const title = item_json.title orelse "";
-        return .{ .text = .{ .title = try dupZ(allocator, title), .is_separator = item_json.is_separator } };
+        return .{ .text = .{ .title = try dupZ(allocator, title), .is_separator = item_json.is_separator, .sf_symbol_name = sf_name } };
     } else if (std.mem.eql(u8, item_json.type, "action")) {
         const title = item_json.title orelse "Action";
         const key_eq = item_json.key_equivalent orelse "";
         const kind_str = item_json.kind orelse "quit";
         const is_callback = std.mem.eql(u8, kind_str, "callback");
         const kind: model.ActionKind = if (is_callback) .{ .callback = 0 } else .quit;
-        return .{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = kind } };
+        return .{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = kind, .sf_symbol_name = sf_name } };
     }
     return error.InvalidItem;
 }

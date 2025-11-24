@@ -26,11 +26,13 @@ pub const ActionItem = struct {
     title: [*:0]const u8,
     key_equivalent: [*:0]const u8,
     kind: ActionKind,
+    sf_symbol_name: ?[*:0]const u8 = null,
 };
 
 pub const TextLineItem = struct {
     title: [*:0]const u8,
     is_separator: bool = false,
+    sf_symbol_name: ?[*:0]const u8 = null,
 };
 
 pub const MenuItem = union(enum) {

@@ -2,8 +2,14 @@ import TrayKit from "./index";
 
 async function main() {
   const client = TrayKit.createClient();
-  await client.addText({ title: "Text #1" });
-  await client.addText({ title: "Text #2" });
+  await client.addText({
+    title: "Text #1",
+    sf_symbol_name: "square.and.arrow.up",
+  });
+  await client.addText({
+    title: "Text #2",
+    sf_symbol_name: "rectangle.portrait.and.arrow.right",
+  });
 
   await client.addAction({
     title: "Say Hi",

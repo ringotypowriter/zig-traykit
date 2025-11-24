@@ -48,6 +48,23 @@ pub fn popActionEvent() ?ActionEvent {
     return g_action_queue.pop();
 }
 
+// NSImage imageWithSystemSymbolName:accessibilityDescription: is available
+// starting macOS 26 on this target (Darwin 25.x per uname -r).
+fn isAtLeastMacOS26() bool {
+    const uts = std.posix.uname();
+
+    if (!std.mem.eql(u8, std.mem.sliceTo(&uts.sysname, 0), "Darwin")) return false;
+
+    const release_slice = std.mem.sliceTo(&uts.release, 0);
+    var it = std.mem.splitScalar(u8, release_slice, '.');
+
+    if (it.next()) |major_str| {
+        const major = std.fmt.parseInt(u8, major_str, 10) catch return false;
+        return major >= 25;
+    }
+    return false;
+}
+
 pub const TrayRuntime = struct {
     nsStringClass: objc_rt.id,
     menuItemClass: objc_rt.id,
@@ -87,6 +104,26 @@ pub const TrayRuntime = struct {
     pub fn setIcon(self: *TrayRuntime, icon: model.TrayIcon) void {
         var payload = SetIconPayload{ .runtime = self, .icon = icon };
         onMain(&payload, SetIconPayload.run);
+    }
+
+    pub fn setMenuItemIcon(self: *TrayRuntime, menuItem: objc_rt.id, symbolName: ?[*:0]const u8) void {
+        if (!isAtLeastMacOS26()) return;
+
+        const name = symbolName orelse return;
+
+        const nsImageClass = objc_rt.getClass("NSImage");
+
+        const imageWithSymSel = objc_rt.getSel("imageWithSystemSymbolName:accessibilityDescription:");
+
+        const setImageSel = objc_rt.getSel("setImage:");
+
+        const nameStr = objc_rt.makeStrFn(self.nsStringClass, objc_rt.getSel("stringWithUTF8String:"), name);
+
+        const image = objc_rt.msgSend_id_id_id(nsImageClass, imageWithSymSel, nameStr, null);
+
+        if (image != null) {
+            objc_rt.msgSend_void_id(menuItem, setImageSel, image);
+        }
     }
 
     fn ensureTarget(self: *TrayRuntime) void {
@@ -275,6 +312,8 @@ pub const TrayRuntime = struct {
                         },
                     }
 
+                    self.runtime.setMenuItemIcon(menuItem, action_cfg.sf_symbol_name);
+
                     if (insert_index == self.runtime.item_count) {
                         objc_rt.msgSend_void_id(self.runtime.menu, objc_rt.getSel("addItem:"), menuItem);
                     } else {
@@ -322,6 +361,9 @@ pub const TrayRuntime = struct {
                             null,
                             emptyEqStr,
                         );
+
+                        self.runtime.setMenuItemIcon(menuItem, text_cfg.sf_symbol_name);
+
                         if (insert_index == self.runtime.item_count) {
                             objc_rt.msgSend_void_id(self.runtime.menu, objc_rt.getSel("addItem:"), menuItem);
                         } else {
@@ -372,7 +414,7 @@ pub const TrayRuntime = struct {
         }
     };
 
-const ListPayload = struct {
+    const ListPayload = struct {
         runtime: *TrayRuntime,
         allocator: std.mem.Allocator,
         titles: [][]u8,

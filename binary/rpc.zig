@@ -82,6 +82,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                 if (params) |p| {
                     const title_val: std.json.Value = p.object.get("title") orelse std.json.Value{ .string = "" };
                     const is_sep_val = p.object.get("is_separator");
+                    const sf_symbol_val = p.object.get("sf_symbol_name");
                     const idx_opt = p.object.get("index");
                     const title = switch (title_val) {
                         .string => |s| s,
@@ -91,7 +92,20 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                         .bool => |b| b,
                         else => false,
                     } else false;
-                    const menu_item = model.MenuItem{ .text = .{ .title = try dupZ(allocator, title), .is_separator = is_sep } };
+                    const sf_symbol_name = if (sf_symbol_val) |v| switch (v) {
+                        .string => |s| blk: {
+                            const buf = try dupZ(allocator, s);
+                            break :blk @as([*:0]const u8, buf.ptr);
+                        },
+                        else => null,
+                    } else null;
+                    const menu_item = model.MenuItem{
+                        .text = .{
+                            .title = try dupZ(allocator, title),
+                            .is_separator = is_sep,
+                            .sf_symbol_name = sf_symbol_name,
+                        },
+                    };
                     const idx_converted: ?usize = if (idx_opt) |v| blk: {
                         const vi = switch (v) {
                             .integer => |i| i,
@@ -110,6 +124,7 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                     const idx_opt = p.object.get("index");
                     const kind_val = p.object.get("kind");
                     const cb_id_val = p.object.get("id");
+                    const sf_symbol_val = p.object.get("sf_symbol_name");
 
                     const title = switch (title_val) {
                         .string => |s| s,
@@ -130,8 +145,22 @@ pub fn rpcLoop(runtime: *runtime_mod.TrayRuntime) !void {
                     } else 0;
 
                     const action_kind: model.ActionKind = if (is_callback) .{ .callback = cb_id } else .quit;
+                    const sf_symbol_name = if (sf_symbol_val) |v| switch (v) {
+                        .string => |s| blk: {
+                            const buf = try dupZ(allocator, s);
+                            break :blk @as([*:0]const u8, buf.ptr);
+                        },
+                        else => null,
+                    } else null;
 
-                    const menu_item = model.MenuItem{ .action = .{ .title = try dupZ(allocator, title), .key_equivalent = try dupZ(allocator, key_eq), .kind = action_kind } };
+                    const menu_item = model.MenuItem{
+                        .action = .{
+                            .title = try dupZ(allocator, title),
+                            .key_equivalent = try dupZ(allocator, key_eq),
+                            .kind = action_kind,
+                            .sf_symbol_name = sf_symbol_name,
+                        },
+                    };
                     const idx_converted: ?usize = if (idx_opt) |v| blk: {
                         const vi = switch (v) {
                             .integer => |i| i,

@@ -12,6 +12,7 @@ export type TextMenuItem = {
   type: "text";
   title: string;
   is_separator?: boolean;
+  sf_symbol_name?: string;
 };
 
 export type ActionMenuItem = {
@@ -19,6 +20,7 @@ export type ActionMenuItem = {
   title: string;
   key_equivalent?: string;
   kind: "callback" | "quit";
+  sf_symbol_name?: string;
 };
 
 export type MenuItemConfig = TextMenuItem | ActionMenuItem;
@@ -62,7 +64,9 @@ export function stateFromConfigJson(configJson?: string): TrayState {
     const items = Array.isArray(parsed?.items)
       ? parsed.items
           .map((item: unknown) => parseMenuItem(item))
-          .filter((item: MenuItemConfig | null): item is MenuItemConfig => Boolean(item))
+          .filter((item: MenuItemConfig | null): item is MenuItemConfig =>
+            Boolean(item),
+          )
       : [];
     return { icon, items };
   } catch {
@@ -90,20 +94,27 @@ export function updateIconState(
   if (typeof params.accessibility_description === "string") {
     icon.accessibility_description = params.accessibility_description;
   }
-  if (typeof params.base64_data === "string") icon.base64_data = params.base64_data;
+  if (typeof params.base64_data === "string")
+    icon.base64_data = params.base64_data;
 
   state.icon = icon;
 }
 
 export function insertTextItem(
   state: TrayState,
-  params: { title: string; is_separator?: boolean; index?: number },
+  params: {
+    title: string;
+    is_separator?: boolean;
+    index?: number;
+    sf_symbol_name?: string;
+  },
 ): number {
   const index = clampIndex(params.index, state.items.length);
   const item: TextMenuItem = {
     type: "text",
     title: params.title,
     is_separator: Boolean(params.is_separator),
+    sf_symbol_name: params.sf_symbol_name,
   };
   state.items.splice(index, 0, item);
   return index;
@@ -116,6 +127,7 @@ export function insertActionItem(
     key_equivalent?: string;
     kind: "callback" | "quit";
     index?: number;
+    sf_symbol_name?: string;
   },
 ): number {
   const index = clampIndex(params.index, state.items.length);
@@ -124,6 +136,7 @@ export function insertActionItem(
     title: params.title,
     key_equivalent: params.key_equivalent,
     kind: params.kind,
+    sf_symbol_name: params.sf_symbol_name,
   };
   state.items.splice(index, 0, item);
   return index;
@@ -152,18 +165,26 @@ function parseIcon(value: unknown): IconConfig | null {
   if (typeof record.accessibility_description === "string") {
     icon.accessibility_description = record.accessibility_description;
   }
-  if (typeof record.base64_data === "string") icon.base64_data = record.base64_data;
+  if (typeof record.base64_data === "string")
+    icon.base64_data = record.base64_data;
   return icon;
 }
 
 function parseMenuItem(value: unknown): MenuItemConfig | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
+
+  const getSymbolName = () =>
+    typeof record.sf_symbol_name == "string"
+      ? record.sf_symbol_name
+      : undefined;
+
   if (record.type === "text" && typeof record.title === "string") {
     return {
       type: "text",
       title: record.title,
       is_separator: Boolean(record.is_separator),
+      sf_symbol_name: getSymbolName(),
     };
   }
   if (record.type === "action" && typeof record.title === "string") {
@@ -172,8 +193,11 @@ function parseMenuItem(value: unknown): MenuItemConfig | null {
       type: "action",
       title: record.title,
       key_equivalent:
-        typeof record.key_equivalent === "string" ? record.key_equivalent : undefined,
+        typeof record.key_equivalent === "string"
+          ? record.key_equivalent
+          : undefined,
       kind,
+      sf_symbol_name: getSymbolName(),
     };
     return action;
   }
